@@ -1,34 +1,7 @@
 import PropTypes from 'prop-types';
 import React from 'react';
 import warning from 'warning';
-import { keyframes } from 'styled-components';
 import Collapsible from '../collapsible';
-
-const createOpeningAnimation = height => keyframes`
-  0% {
-    height: 0;
-    overflow: hidden;
-  }
-
-  99% {
-    height: ${height}px;
-    overflow: hidden;
-  }
-  100% {
-    height: auto;
-    overflow: visible;
-  }
-`;
-const createClosingAnimation = height => keyframes`
-  from {
-    height: ${height}px;
-  }
-
-  to {
-    height: 0;
-    overflow: hidden;
-  }
-`;
 
 export class ToggleAnimation extends React.Component {
   static displayName = 'ToggleAnimation';
@@ -37,39 +10,10 @@ export class ToggleAnimation extends React.Component {
     toggle: PropTypes.func.isRequired,
     children: PropTypes.func.isRequired,
   };
-  animation = '';
-  fullHeight = null;
 
-  // eslint-disable-next-line camelcase
-  UNSAFE_componentWillMount() {
-    this.calcAnimation(this.props);
-  }
-
-  // eslint-disable-next-line camelcase
-  UNSAFE_componentWillReceiveProps(nextProps) {
-    if (nextProps.isOpen !== this.props.isOpen) {
-      this.calcAnimation(nextProps);
-    } else {
-      this.animation = '';
-    }
-  }
-
-  calcAnimation = props => {
-    const animationName = this.getAnimationName({
-      isOpen: props.isOpen,
-      height: this.fullHeight,
-    });
-    this.animation = `${animationName} 200ms forwards`;
-  };
-
-  getAnimationName = props => {
-    // in case the render callback was called without the isOpen value actually
-    // having changed we need to avoid to replay the last animation.
-    if (props.isOpen === this.prevIsOpen) return '';
-    this.prevIsOpen = props.isOpen;
-    return props.isOpen
-      ? createOpeningAnimation(props.height)
-      : createClosingAnimation(props.height);
+  state = {
+    containerStyles: {},
+    fullHeight: 0,
   };
 
   handleToggle = () => {
@@ -77,31 +21,64 @@ export class ToggleAnimation extends React.Component {
       this.node,
       'You need to call `registerContentNode` in order to use this component'
     );
-    // set panel height to the height of the content,
-    // so we can animate between the height and 0
-    this.fullHeight = this.calcFullHeight();
+
+    if (this.props.isOpen) {
+      this.setState(prevState => ({
+        // when clicked while animating
+        fullHeight: Math.max(prevState.fullHeight, this.node.clientHeight),
+        containerStyles: {
+          transition: 'height 1s ease 0s',
+          height: 0,
+          overflow: 'hidden',
+        },
+      }));
+    } else {
+      this.setState(prevState => ({
+        containerStyles: {
+          overflow: 'hidden',
+          transition: 'height 1s ease 0s',
+          height: prevState.fullHeight,
+        },
+      }));
+    }
+
     this.props.toggle();
   };
-
-  calcFullHeight = () =>
-    this.fullHeight === this.node.clientHeight
-      ? this.fullHeight
-      : this.node.clientHeight;
 
   registerContentNode = node => {
     if (!node) return;
     this.node = node;
+    // update once to get rid of initial "auto" styling
+
+    // TODO respect initial value of isOpen
+    this.setState({
+      containerStyles: {
+        height: this.node.clientHeight,
+      },
+    });
+    // this.node.addEventListener(
+    //   'transitionend',
+    //   this.handleTransitionEnd
+    // );
+  };
+
+  handleTransitionEnd = () => {
+    // this.setState(prevState => ({
+    //   containerStyles: {
+    //     ...prevState.containerStyles,
+    //     height: this.props.isOpen ? 'auto' : 0,
+    //   },
+    // }));
   };
 
   render() {
-    return this.props.children({
-      animation: this.animation,
-      containerStyles: this.props.isOpen
-        ? { height: 'auto' }
-        : { height: 0, overflow: 'hidden' },
+    const childProps = {
+      containerStyles: this.state.containerStyles,
       toggle: this.handleToggle,
       registerContentNode: this.registerContentNode,
-    });
+    };
+    console.log(childProps);
+    return this.props.children(childProps);
   }
 }
 
@@ -124,19 +101,17 @@ class CollapsibleMotion extends React.PureComponent {
         {({ isOpen, toggle }) => (
           <ToggleAnimation isOpen={isOpen} toggle={toggle}>
             {({
-              animation,
               containerStyles,
-              toggle: animationToggle,
+              toggle: toggleAnimation,
               registerContentNode,
+              registerContainerNode,
             }) =>
               this.props.children({
                 isOpen,
-                toggle: animationToggle,
-                containerStyles: {
-                  animation,
-                  ...containerStyles,
-                },
+                toggle: toggleAnimation,
+                containerStyles,
                 registerContentNode,
+                registerContainerNode,
               })
             }
           </ToggleAnimation>
